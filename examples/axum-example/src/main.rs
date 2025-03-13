@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use rand::Rng;
 
 use axum::{
     async_trait,
@@ -8,7 +9,7 @@ use axum::{
 };
 use rudi::{Context, Singleton};
 use tokio::{net::TcpListener, sync::Mutex};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{fmt::format, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[async_trait]
 trait Service: Send + Sync {
@@ -61,6 +62,34 @@ async fn del(Path(name): Path<String>, State(svc): State<Arc<dyn Service>>) {
     svc.delete(&name).await;
 }
 
+async fn process_cpu() -> String {
+    let start = std::time::Instant::now();
+    let mut s = String::new();
+    let mut rng = rand::thread_rng();
+    for _ in 0..300000 {
+        s.push((rng.gen_range(0..26) + 97) as u8 as char);
+    }
+    let s = s.as_bytes();
+    let mut matches = 0;
+    for i in 0..s.len() {
+        for j in i + 1..s.len() {
+            if s[i] == s[j] {
+                matches += 1;
+            }
+        }
+    }
+    return format!("Found {} matches", matches);
+}
+
+async fn cpu_intensive_task() -> String {
+    let start = std::time::Instant::now();
+    let result = process_cpu().await;
+    // tracing::debug!("Found {} matches", matches);
+    // tracing::debug!("Elapsed time: {:?}", start.elapsed());
+    return format!("Elapsed time: {:?} found: {}", start.elapsed(), result);
+}
+
+
 #[Singleton]
 fn EmptyVec() -> Arc<Mutex<Vec<String>>> {
     Arc::new(Mutex::new(Vec::new()))
@@ -72,6 +101,8 @@ async fn Run(svc: Arc<dyn Service>) {
         .route("/insert/:name", post(insert))
         .route("/search/:name", get(search))
         .route("/delete/:name", delete(del))
+        // cpu密集型任务
+        .route("/cpu", get(cpu_intensive_task))
         .with_state(svc);
 
     let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
